@@ -33,7 +33,7 @@ Device.LocalAgent.Subscription.1.Persistent true
 
 Device.LocalAgent.MTP.1.MQTT.ResponseTopicConfigured "/usp/agent"
 Device.LocalAgent.MTP.1.MQTT.Reference "Device.MQTT.Client.1"
-Device.MQTT.Client.1.BrokerAddress "mqtt.eclipse.org"
+Device.MQTT.Client.1.BrokerAddress "test.mosquitto.org"
 Device.MQTT.Client.1.ProtocolVersion "5.0"
 Device.MQTT.Client.1.BrokerPort "1883"
 Device.MQTT.Client.1.TransportProtocol "TCP/IP"
