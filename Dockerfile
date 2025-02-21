@@ -95,4 +95,4 @@ COPY --from=build-stage /usr/local/src/obuspa/mqtt_factory_reset_example.txt /et
 RUN ldconfig
 
 ENTRYPOINT ["/bin/obuspa"]
-CMD ["-p", "-v4", "-r", "/etc/mqtt_factory_reset_example.txt", "-f", "/tmp/usp.db"]
+CMD ["-p", "-v4", "-r", "/etc/mqtt_factory_reset_example.txt", "-f", "/usr/local/var/obuspa/tmp/usp.db"]
