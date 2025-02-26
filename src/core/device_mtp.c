@@ -250,6 +250,7 @@ int DEVICE_MTP_Init(void)
 
     err |= USP_REGISTER_DBParam_ReadWrite(DEVICE_AGENT_MTP_ROOT ".{i}.Protocol", DEFAULT_MTP_PROTOCOL, Validate_AgentMtpProtocol, NotifyChange_AgentMtpProtocol, DM_STRING);
     err |= USP_REGISTER_DBParam_ReadWrite(DEVICE_AGENT_MTP_ROOT ".{i}.Enable", "false", Validate_AgentMtpEnable, NotifyChange_AgentMtpEnable, DM_BOOL);
+    err |= USP_REGISTER_DBParam_ReadWrite(DEVICE_AGENT_MTP_ROOT ".{i}.EnableMDNS", "false", Validate_AgentMtpEnableMDNS, NotifyChange_AgentMtpEnableMDNS, DM_BOOL);
 
 #ifndef DISABLE_STOMP
     err |= USP_REGISTER_DBParam_ReadWrite(DEVICE_AGENT_MTP_ROOT ".{i}.STOMP.Reference", "", DEVICE_MTP_ValidateStompReference, NotifyChange_AgentMtpStompReference, DM_STRING);
@@ -984,6 +985,18 @@ int Validate_AgentMtpEnable(dm_req_t *req, char *value)
     return USP_ERR_OK;
 }
 
+int Validate_AgentMtpEnableMDNS(dm_req_t *req, char *value)
+{
+    bool enable;
+    int err;
+
+    // Exit if the value was invalid
+    err = TEXT_UTILS_StringToBool(value, &enable);
+    if (err != USP_ERR_OK)
+    {
+        return err;
+    }
+}
 /*********************************************************************//**
 **
 ** Validate_AgentMtpProtocol
@@ -1189,6 +1202,101 @@ int NotifyChange_AgentMtpEnable(dm_req_t *req, char *value)
     return USP_ERR_OK;
 }
 
+int NotifyChange_AgentMtpEnableMDNS(dm_req_t *req, char *value)
+{
+    agent_mtp_t *mtp;
+
+    // Determine MTP to be updated
+    mtp = FindAgentMtpByInstance(inst1);
+    USP_ASSERT(mtp != NULL);
+
+    // Exit if the value has not changed
+    if (val_bool == mtp->enable)
+    {
+        return USP_ERR_OK;
+    }
+
+    // Update the protocol based on the change
+    switch(mtp->protocol)
+    {
+#ifndef DISABLE_STOMP
+        case kMtpProtocol_STOMP:
+            // Store the new value
+            mtp->enable = val_bool;
+
+            // Always schedule a reconnect for the affected STOMP connection instance
+            // If this MTP has been disabled, then the reconnect will fail unless another MTP specifies the agent queue to subscribe to
+            if (mtp->stomp_connection_instance != INVALID)
+            {
+                DEVICE_STOMP_ScheduleReconnect(mtp->stomp_connection_instance);
+            }
+            break;
+#endif
+
+#ifdef ENABLE_COAP
+        case kMtpProtocol_CoAP:
+{
+            // Enable or disable the CoAP server based on the new value
+            int err;
+            if (val_bool)
+            {
+                // CoAP Server has been enabled
+                mtp->enable = val_bool;
+                err = ControlCoapServer(mtp, COAP_SERVER_Start);
+            }
+            else
+            {
+                // CoAP Server has been disabled
+                err = ControlCoapServer(mtp, COAP_SERVER_Stop);
+                mtp->enable = val_bool;
+            }
+
+            // Exit if an error occurred when starting or stopping the CoAPserver
+            if (err != USP_ERR_OK)
+            {
+                return err;
+            }
+}
+            break;
+#endif
+#ifdef ENABLE_MQTT
+        case kMtpProtocol_MQTT:
+            // Store the new value
+            mtp->enable = val_bool;
+
+            // Always schedule a reconnect for the affected MQTT connection instance
+            // If this MTP has been disabled, then the reconnect will fail unless another MTP specifies the agent queue to subscribe to
+            if (mtp->mqtt_connection_instance != INVALID)
+            {
+                DEVICE_MQTT_ScheduleReconnect(mtp->mqtt_connection_instance);
+            }
+            break;
+#endif
+
+#ifdef ENABLE_WEBSOCKETS
+        case kMtpProtocol_WebSockets:
+            // Enable or disable the Websocket server based on the new value
+            if (val_bool)
+            {
+                // Websocket server has been enabled
+                mtp->enable = val_bool;
+                WSSERVER_EnableServer(&mtp->websock);
+            }
+            else
+            {
+                // Websocket server has been disabled
+                WSSERVER_DisableServer();
+                mtp->enable = val_bool;
+            }
+            break;
+#endif
+        default:
+            TERMINATE_BAD_CASE(mtp->protocol);
+            break;
+    }
+
+    return USP_ERR_OK;
+}
 /*********************************************************************//**
 **
 ** NotifyChange_AgentMtpProtocol
