@@ -358,6 +358,7 @@ int DEVICE_CONTROLLER_Init(void)
 
     err |= USP_REGISTER_Param_NumEntries(DEVICE_CONT_ROOT ".{i}.MTPNumberOfEntries", "Device.LocalAgent.Controller.{i}.MTP.{i}");
     err |= USP_REGISTER_DBParam_ReadWrite(DEVICE_CONT_ROOT ".{i}.MTP.{i}.Enable", "false", Validate_ControllerMtpEnable, Notify_ControllerMtpEnable, DM_BOOL);
+    err |= USP_REGISTER_DBParam_ReadWrite(DEVICE_CONT_ROOT ".{i}.MTP.{i}.EnableMDNS", "false", Validate_ControllerMtpEnableMDNS, Notify_ControllerMtpEnableMDNS, DM_BOOL);
     err |= USP_REGISTER_DBParam_ReadWrite(DEVICE_CONT_ROOT ".{i}.MTP.{i}.Protocol", DEFAULT_CONTROLLER_MTP, Validate_ControllerMtpProtocol, Notify_ControllerMtpProtocol, DM_STRING);
 
 #ifndef DISABLE_STOMP
@@ -2745,6 +2746,45 @@ int Validate_ControllerMtpEnable(dm_req_t *req, char *value)
     return err;
 }
 
+int Validate_ControllerMtpEnableMDNS(dm_req_t *req, char *value)
+{
+    int err;
+    mtp_protocol_t protocol;
+    char path[MAX_DM_PATH];
+
+    // Exit if we are disabling this controller MTP. In this case we do not have to perform the uniqueness aand resource available checks
+    if (val_bool == false)
+    {
+        return USP_ERR_OK;
+    }
+
+    // Exit if unable to get the protocol configured for this MTP
+    // NOTE: We look the value up in the database because this function may be called before the controller MTP has actually been added to the internal data structure
+    USP_SNPRINTF(path, sizeof(path), "%s.%d.MTP.%d.Protocol", device_cont_root, inst1, inst2);
+    err = DM_ACCESS_GetEnum(path, &protocol, mtp_protocols, NUM_ELEM(mtp_protocols));
+    if (err != USP_ERR_OK)
+    {
+        // NOTE: Ignoring any error because the setting of enable may be done before protocol, when performing an AddInstance
+        return USP_ERR_OK;
+    }
+
+    // Exit if trying to enable more than one MTP with the same protocol for this controller
+    err = ValidateMtpUniqueness(protocol, inst1, inst2);
+    if (err != USP_ERR_OK)
+    {
+        return err;
+    }
+
+    // Exit if trying to enable more MTPs than the lower levels support for this protocol
+    err = ValidateMtpResourceAvailable(protocol, inst1, inst2);
+    if (err != USP_ERR_OK)
+    {
+        return err;
+    }
+
+    return err;
+}
+
 /*********************************************************************//**
 **
 ** Validate_ControllerMtpProtocol
@@ -3098,6 +3138,73 @@ int Notify_ControllerAssignedRole(dm_req_t *req, char *value)
 **
 **************************************************************************/
 int Notify_ControllerMtpEnable(dm_req_t *req, char *value)
+{
+    controller_t *cont = NULL;
+    controller_mtp_t *mtp;
+
+    // Determine MTP to be updated
+    mtp = FindControllerMtpFromReq(req, &cont);
+    USP_ASSERT(mtp != NULL);
+
+    // Exit if the value has not changed
+    if (val_bool == mtp->enable)
+    {
+        return USP_ERR_OK;
+    }
+
+    // Save the new value
+    mtp->enable = val_bool;
+
+#ifdef ENABLE_COAP
+{
+    // Start or stop CoAP client based on new value
+    int err;
+    if (mtp->protocol == kMtpProtocol_CoAP)
+    {
+        if ((mtp->enable) && (cont->enable))
+        {
+            // Exit if unable to start client
+            err = COAP_CLIENT_Start(cont->instance, mtp->instance, cont->endpoint_id);
+            if (err != USP_ERR_OK)
+            {
+                return err;
+            }
+        }
+        else
+        {
+            COAP_CLIENT_Stop(cont->instance, mtp->instance);
+        }
+    }
+}
+#endif
+
+#ifdef ENABLE_WEBSOCKETS
+{
+    // Start or stop WebSockets client based on new value
+    if (mtp->protocol == kMtpProtocol_WebSockets)
+    {
+        if ((mtp->enable) && (cont->enable))
+        {
+            WSCLIENT_StartClient(cont->instance, mtp->instance, cont->endpoint_id, &mtp->websock);
+        }
+        else
+        {
+            WSCLIENT_StopClient(cont->instance, mtp->instance);
+        }
+    }
+}
+#endif
+
+#ifdef ENABLE_MQTT
+    DEVICE_MQTT_UpdateControllerTopics();
+#endif
+
+    // NOTE: We do not have to do anything for STOMP, as these parameters are only searched when we send
+
+    return USP_ERR_OK;
+}
+
+int Notify_ControllerMtpEnableMDNS(dm_req_t *req, char *value)
 {
     controller_t *cont = NULL;
     controller_mtp_t *mtp;
