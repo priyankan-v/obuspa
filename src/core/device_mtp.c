@@ -160,11 +160,13 @@ const enum_entry_t mtp_statuses[] =
 //------------------------------------------------------------------------------
 // Forward declarations. Note these are not static, because we need them in the symbol table for USP_LOG_Callstack() to show them
 int Validate_AgentMtpEnable(dm_req_t *req, char *value);
+int Validate_AgentMtpEnableMDNS(dm_req_t *req, char *value);
 int ValidateAdd_AgentMtp(dm_req_t *req);
 int Notify_AgentMtpAdded(dm_req_t *req);
 int Notify_AgentMtpDeleted(dm_req_t *req);
 int Validate_AgentMtpProtocol(dm_req_t *req, char *value);
 int NotifyChange_AgentMtpEnable(dm_req_t *req, char *value);
+int NotifyChange_AgentMtpEnableMDNS(dm_req_t *req, char *value);
 int NotifyChange_AgentMtpProtocol(dm_req_t *req, char *value);
 int Get_MtpStatus(dm_req_t *req, char *buf, int len);
 int ProcessAgentMtpAdded(int instance);
