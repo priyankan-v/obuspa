@@ -998,6 +998,7 @@ int Validate_AgentMtpEnableMDNS(dm_req_t *req, char *value)
     {
         return err;
     }
+    return USP_ERR_OK;
 }
 /*********************************************************************//**
 **
